@@ -11,8 +11,6 @@ icon.filename = %(source.dir)s/icon.png
 fullscreen = 0
 android.api = 34
 android.minapi = 24
-android.sdk_path = /home/luana_dsl90/Android/Sdk
-android.ndk_path = /home/luana_dsl90/Android/Ndk/r25b
 
 [buildozer]
 log_level = 2
