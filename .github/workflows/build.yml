@@ -1,0 +1,49 @@
+# Conteúdo para o arquivo build.yml
+name: Build FilaBottle APK
+
+on:
+  push:
+    branches: [ "main", "master" ] # Compila quando você envia código para a branch main ou master
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.9'
+
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+        git \
+        zip \
+        unzip \
+        build-essential \
+        python3-pip \
+        autoconf \
+        libtool \
+        pkg-config \
+        libffi-dev \
+        libssl-dev
+
+    - name: Install buildozer and dependencies
+      run: |
+        pip install --upgrade cython
+        pip install --upgrade buildozer
+
+    - name: Build the APK
+      run: |
+        buildozer android debug
+
+    - name: Upload APK as Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: FilaBottle-APK
+        path: bin/*.apk
