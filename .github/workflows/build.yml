@@ -1,9 +1,8 @@
-# Conteúdo para o arquivo build.yml
 name: Build FilaBottle APK
 
 on:
   push:
-    branches: [ "main", "master" ] # Compila quando você envia código para a branch main ou master
+    branches: [ "main", "master" ]
 
 jobs:
   build:
@@ -39,6 +38,7 @@ jobs:
         pip install --upgrade buildozer
 
     - name: Build the APK
+      working-directory: ./ClienteAndroid
       run: |
         buildozer android debug
 
@@ -46,4 +46,4 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: FilaBottle-APK
-        path: bin/*.apk
+        path: ClienteAndroid/bin/*.apk
