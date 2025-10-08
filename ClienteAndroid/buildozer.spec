@@ -11,6 +11,7 @@ icon.filename = %(source.dir)s/icon.png
 fullscreen = 0
 android.api = 34
 android.minapi = 24
+p4a.branch = master
 
 [buildozer]
 log_level = 2
