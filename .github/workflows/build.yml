@@ -94,7 +94,7 @@ jobs:
 
       with:
 
-        name: FilaBottle-APK
+        name: FilaBottle
 
         path: ClienteAndroid/bin/*.apk
 
