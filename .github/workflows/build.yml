@@ -32,9 +32,9 @@ jobs:
         libffi-dev \
         libssl-dev
 
-    - name: Install buildozer and dependencies
+    - name: Install buildozer and specific Cython version
       run: |
-        pip install --upgrade cython
+        pip install --upgrade "cython==0.29.37"
         pip install --upgrade buildozer
 
     - name: Build the APK
