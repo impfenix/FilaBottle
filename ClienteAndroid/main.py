@@ -10,11 +10,14 @@ from kivy.properties import StringProperty, NumericProperty, ListProperty
 from kivy.utils import platform
 
 import serial
-# A listagem de portas padrão não funciona no Android
+# Importa a exceção específica para tratar desconexões
+from serial.serialutil import SerialException
+
+# A listagem de portas padrão só funciona no Desktop
 if platform != 'android':
     import serial.tools.list_ports
 
-# Widget customizado para controlar um parâmetro com botões +/-
+# A classe ParameterControl não mudou
 class ParameterControl(BoxLayout):
     param_name = StringProperty('')
     param_value = NumericProperty(0)
@@ -72,50 +75,45 @@ class ParameterControl(BoxLayout):
         self.update_value_label()
         self.callback(self.param_name, self.param_value)
 
+
 class FilaBottleApp(App):
-    # Cores para os botões de estado
-    COLOR_ON = ListProperty([0.2, 0.8, 0.2, 1])  # Verde
-    COLOR_OFF = ListProperty([0.8, 0.2, 0.2, 1]) # Vermelho
-    COLOR_NEUTRAL = ListProperty([0.2, 0.2, 0.2, 1]) # Cinza escuro
+    COLOR_ON = ListProperty([0.2, 0.8, 0.2, 1])
+    COLOR_OFF = ListProperty([0.8, 0.2, 0.2, 1])
+    COLOR_NEUTRAL = ListProperty([0.2, 0.2, 0.2, 1])
 
     def build(self):
         self.arduino = None
-        # Variáveis internas para evitar depender da cor do botão
         self.system_is_on = False
         self.heater_is_on = False
         self.motor_is_on = False
 
         self.main_layout = BoxLayout(orientation='vertical', padding=20, spacing=15)
 
-        # --- Conexão Serial ---
+        # --- Conexão Serial com Botão Atualizar (SUA NOVA VERSÃO) ---
         connection_layout = BoxLayout(size_hint_y=None, height=40, spacing=10)
-        self.port_spinner = Spinner(text='Selecione a Porta', values=self.listar_portas())
-        self.connect_btn = Button(text='Conectar', on_press=self.conectar)
+        self.port_spinner = Spinner(text='Selecione a Porta', values=self.listar_portas(), size_hint_x=0.6)
+        
+        self.refresh_btn = Button(text='Atualizar', on_press=self.refresh_ports, size_hint_x=0.2)
+        
+        self.connect_btn = Button(text='Conectar', on_press=self.conectar, size_hint_x=0.2)
         connection_layout.add_widget(self.port_spinner)
+        connection_layout.add_widget(self.refresh_btn)
         connection_layout.add_widget(self.connect_btn)
         self.main_layout.add_widget(connection_layout)
 
-        # --- Display de Temperatura ---
+        # --- O resto do layout continua igual ---
         self.temp_display = Label(text='--.-- °C', font_size='48sp', size_hint_y=0.3)
         self.main_layout.add_widget(self.temp_display)
         self.status_label = Label(text='Desconectado', size_hint_y=0.1)
         self.main_layout.add_widget(self.status_label)
-
-        # --- Controles de Parâmetros ---
         self.vel_control = ParameterControl('Velocidade', 40.0, 'mm/s', self.send_param_update, step=0.5)
         self.temp_control = ParameterControl('Temp. Alvo', 120.0, '°C', self.send_param_update, step=1)
         self.motor_temp_control = ParameterControl('Temp. Motor', 90.0, '°C', self.send_param_update, step=1)
-        
         self.main_layout.add_widget(self.vel_control)
         self.main_layout.add_widget(self.temp_control)
         self.main_layout.add_widget(self.motor_temp_control)
-
-        # --- LAYOUT DOS BOTÕES ALTERADO ---
-        # Botão mestre que ocupa uma linha inteira
         self.master_btn = Button(text='Ligar Sistema', on_press=self.toggle_system, background_color=self.COLOR_NEUTRAL, size_hint_y=0.2)
         self.main_layout.add_widget(self.master_btn)
-
-        # Layout em grade para os botões de controle individual
         individual_controls_layout = GridLayout(cols=2, spacing=10, size_hint_y=0.2)
         self.heater_btn = Button(text='Ligar Aquecedor', on_press=self.toggle_heater, background_color=self.COLOR_OFF)
         self.motor_btn = Button(text='Ligar Motor', on_press=self.toggle_motor, background_color=self.COLOR_OFF)
@@ -124,13 +122,25 @@ class FilaBottleApp(App):
         self.main_layout.add_widget(individual_controls_layout)
 
         Clock.schedule_interval(self.read_from_arduino, 0.1)
-        Clock.schedule_interval(lambda dt: self.atualizar_lista_portas(), 5) # Atualiza a lista a cada 5s
         return self.main_layout
+    
+    def on_start(self):
+        """ Pede permissões necessárias no Android ao iniciar o app. """
+        if platform == 'android':
+            try:
+                from android.permissions import request_permissions, Permission
+                request_permissions([Permission.USB_HOST])
+            except ImportError:
+                self.status_label.text = "Erro ao importar permissões."
 
-    def atualizar_lista_portas(self):
+    # SUA NOVA FUNÇÃO
+    def refresh_ports(self, instance):
+        """Atualiza a lista de portas seriais disponíveis no spinner."""
         self.port_spinner.values = self.listar_portas()
+        self.port_spinner.text = 'Selecione a Porta'
 
     def listar_portas(self):
+        """ Lista as portas seriais disponíveis. Usa um método diferente para Android. """
         if platform == 'android':
             try:
                 from usb4a import usb
@@ -146,7 +156,7 @@ class FilaBottleApp(App):
     def conectar(self, instance):
         if self.connect_btn.text == 'Conectar':
             port = self.port_spinner.text
-            if not port.startswith('Nenhuma Porta'):
+            if port not in ['Nenhuma Porta', 'Selecione a Porta', 'Nenhuma Porta USB'] and not port.startswith('Erro USB'):
                 try:
                     self.arduino = serial.Serial(port, 9600, timeout=1)
                     self.status_label.text = f"Conectado a {port}"
@@ -155,18 +165,29 @@ class FilaBottleApp(App):
                     self.status_label.text = f"Erro ao conectar: {e}"
         else:
             if self.arduino: self.arduino.close()
-            self.arduino = None
-            self.status_label.text = "Desconectado"
-            self.connect_btn.text = 'Conectar'
+            # SUA NOVA LÓGICA CENTRALIZADA
+            self.handle_disconnection()
 
+    # SUA NOVA FUNÇÃO
+    def handle_disconnection(self):
+        """Função chamada quando a comunicação serial falha."""
+        if self.arduino:
+            self.arduino.close()
+            self.arduino = None
+        self.status_label.text = "Arduino Desconectado!"
+        self.connect_btn.text = 'Conectar'
+        # Reseta a UI para o estado desligado
+        self.update_ui(-1, '0', '0', '0', 0, 0, 0)
+
+    # SUA FUNÇÃO ALTERADA
     def send_command(self, cmd):
         if self.arduino and self.arduino.is_open:
             try:
                 self.arduino.write(f"{cmd}\n".encode('utf-8'))
-            except Exception as e:
-                self.status_label.text = f"Erro de escrita: {e}"
-                self.conectar(None)
+            except SerialException:
+                self.handle_disconnection()
 
+    # SUAS FUNÇÕES DE TOGGLE ALTERADAS
     def toggle_system(self, instance):
         new_state = "ON" if not self.system_is_on else "OFF"
         if new_state == "ON":
@@ -175,37 +196,40 @@ class FilaBottleApp(App):
         self.send_command(f"SET_STATE,{new_state}")
 
     def toggle_heater(self, instance):
-        if self.system_is_on:
-            self.send_command("SET_STATE,OFF")
+        """Agora o botão pode desligar o aquecedor mesmo com o sistema ligado."""
         new_state = "ON" if not self.heater_is_on else "OFF"
         self.send_command(f"SET_HEATER,{new_state}")
 
     def toggle_motor(self, instance):
-        if self.system_is_on:
-            self.send_command("SET_STATE,OFF")
+        """Agora o botão pode desligar o motor mesmo com o sistema ligado (se a temp permitir)."""
         new_state = "ON" if not self.motor_is_on else "OFF"
         self.send_command(f"SET_MOTOR,{new_state}")
-
+    
     def send_param_update(self, name, value):
         cmd_map = {'Velocidade': 'SET_VEL', 'Temp. Alvo': 'SET_TEMP', 'Temp. Motor': 'SET_MOTOR_TEMP'}
         command = cmd_map.get(name)
-        if command:
-            self.send_command(f"{command},{value:.2f}")
+        if command: self.send_command(f"{command},{value:.2f}")
 
+    # SUA FUNÇÃO ALTERADA
     def read_from_arduino(self, dt):
         if self.arduino and self.arduino.in_waiting > 0:
             try:
                 line = self.arduino.readline().decode('utf-8').strip()
                 if line.startswith("DATA,"):
                     parts = line.split(',')
-                    if len(parts) == 8:
-                        self.update_ui(*parts[1:])
+                    if len(parts) == 8: self.update_ui(*parts[1:])
+            except SerialException:
+                self.handle_disconnection()
             except Exception as e:
-                print(f"Erro lendo serial: {e}")
+                print(f"Erro inesperado lendo serial: {e}")
 
     def update_ui(self, temp, heater_state, motor_state, sys_state, vel, temp_alvo, temp_motor_min):
         try:
-            self.temp_display.text = f"{float(temp):.2f} °C"
+            # SUA LÓGICA ALTERADA para resetar o display
+            if float(temp) == -1.0 and not self.arduino:
+                 self.temp_display.text = '--.-- °C'
+            else:
+                 self.temp_display.text = f"{float(temp):.2f} °C"
 
             self.vel_control.param_value = float(vel)
             self.vel_control.update_value_label()
@@ -220,16 +244,12 @@ class FilaBottleApp(App):
 
             self.master_btn.background_color = self.COLOR_ON if self.system_is_on else self.COLOR_NEUTRAL
             self.master_btn.text = 'Desligar Tudo' if self.system_is_on else 'Ligar Sistema'
-
             self.heater_btn.background_color = self.COLOR_ON if self.heater_is_on else self.COLOR_OFF
             self.heater_btn.text = 'Desligar Aquecedor' if self.heater_is_on else 'Ligar Aquecedor'
-            
             self.motor_btn.background_color = self.COLOR_ON if self.motor_is_on else self.COLOR_OFF
             self.motor_btn.text = 'Desligar Motor' if self.motor_is_on else 'Ligar Motor'
-        except ValueError:
-            print("Erro ao converter dados recebidos do Arduino.")
-        except Exception as e:
-            print(f"Erro ao atualizar a UI: {e}")
+        except (ValueError, IndexError) as e:
+            print(f"Erro ao processar dados do Arduino: {e}")
 
 if __name__ == "__main__":
     FilaBottleApp().run()
