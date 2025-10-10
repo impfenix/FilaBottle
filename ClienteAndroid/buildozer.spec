@@ -1,3 +1,4 @@
+
 [app]
 title = FilaBottle Control
 package.name = filabottle
@@ -15,3 +16,5 @@ android.minapi = 24
 [buildozer]
 log_level = 2
 warn_on_root = 1
+android.accept_sdk_license = True
+android.ndk_version = 25b
